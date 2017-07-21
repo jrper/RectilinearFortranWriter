@@ -11,7 +11,7 @@ program example1
   type(c_ptr) :: grid
   double precision, parameter :: DX = 0.1, DY=0.1, DZ=0.1
 
-  integer :: ierr, rank, nprocs, offset(3)
+  integer :: ierr, rank, nprocs, offset(3), global_extent(6)
 
   call MPI_Init(ierr)
   call MPI_Comm_size(MPI_COMM_WORLD, nprocs, ierr)
@@ -23,6 +23,7 @@ program example1
   z = [(i*DZ, i=0, NZ-1)]
   
   offset = [(NX-1)*rank,0,0]
+  global_extent=[0,30,0,10,0,0]
   
   do k=1, NZ
      do j=1, NY
@@ -46,8 +47,8 @@ program example1
   call create_new_vtk_grid(grid, x, y, z, offset)
   call add_point_array(grid, "My scalar data", data)
   call add_point_array(grid, "My integer data", idata)
-!  call add_cell_array(grid, "My cell data", cdata)
-  call write_vtk_grid(grid, fix_name("bob.pvtr"), nprocs, rank)
+  call add_cell_array(grid, "My cell data", cdata)
+  call write_vtk_grid(grid, fix_name("bob.pvtr"), nprocs, rank, global_extent)
   call destroy_vtk_grid(grid)
 
   call MPI_Finalize(ierr)

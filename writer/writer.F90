@@ -33,11 +33,12 @@ module writer
        type(c_ptr), intent(in), value :: data
      end subroutine add_cell_data
 
-     subroutine write_vtk_grid(grid, name, npieces, piece) bind(c)
+     subroutine write_vtk_grid(grid, name, npieces, piece, global_extent) bind(c)
        use iso_c_binding
        type(c_ptr), intent(in) :: grid
        character(c_char), intent(in) :: name(*)
        integer(c_int), intent(in), value :: npieces, piece
+       integer(c_int), intent(in) :: global_extent(6)
      end subroutine write_vtk_grid
 
      subroutine destroy_vtk_grid(grid) bind(c)
@@ -60,6 +61,10 @@ module writer
      module procedure create_double_vtk_grid, create_float_vtk_grid
   end interface create_new_vtk_grid
 
+  interface ref
+     module procedure dref, fref, iref
+  end interface ref
+
   contains 
 
     subroutine create_double_vtk_grid(grid, x, y, z, offset)
@@ -71,7 +76,7 @@ module writer
            [offset(1), offset(1)+size(x)-1,&
            offset(2), offset(2)+size(y)-1,&
            offset(3), offset(3)+size(z)-1],&        
-           c_loc(x), c_loc(y), c_loc(z), VTK_DOUBLE)
+           ref(x), ref(y), ref(z), VTK_DOUBLE)
 
     end subroutine create_double_vtk_grid
 
@@ -84,7 +89,7 @@ module writer
            [offset(1), offset(1)+size(x)-1,&
            offset(2), offset(2)+size(y)-1,&
            offset(3), offset(3)+size(z)-1],&
-           c_loc(x), c_loc(y), c_loc(z), VTK_FLOAT)
+           ref(x), ref(y), ref(z), VTK_FLOAT)
 
     end subroutine create_float_vtk_grid
     
@@ -94,7 +99,7 @@ module writer
       integer(c_int), target, intent(in) :: data(:,:,:,:)
     
       call add_point_data(grid, fix_name(name), size(data,1),&
-           c_loc(data), VTK_INT)
+           ref(data(:,1,1,1)), VTK_INT)
 
     end subroutine add_point_integer_data
 
@@ -104,7 +109,7 @@ module writer
       real(c_double), target, intent(in) :: data(:,:,:,:)
     
       call add_point_data(grid, fix_name(name), size(data,1),&
-           c_loc(data), VTK_DOUBLE)
+           ref(data(:,1,1,1)), VTK_DOUBLE)
 
     end subroutine add_point_double_data
 
@@ -118,7 +123,7 @@ module writer
       dims = shape(data)
     
       call add_cell_data(grid, fix_name(name), dims(1),&
-           dims(2:4), c_loc(data), VTK_INT)
+           dims(2:4), ref(data(:,1,1,1)), VTK_INT)
 
     end subroutine add_cell_integer_data
 
@@ -132,7 +137,7 @@ module writer
       dims = shape(data)
     
       call add_cell_data(grid, fix_name(name), dims(1),&
-           dims(2:4), c_loc(data), VTK_DOUBLE)
+           dims(2:4), ref(data(:,1,1,1)), VTK_DOUBLE)
 
     end subroutine add_cell_double_data
 
@@ -144,6 +149,30 @@ module writer
       out = trim(name)//C_NULL_CHAR
       
     end function fix_name
+
+    function dref(x)
+      real(c_double), target :: x(*)
+      type(c_ptr) :: dref
+
+      dref = c_loc(x)
+
+    end function dref
+
+    function fref(x)
+      real(c_float), target :: x(*)
+      type(c_ptr) :: fref
+
+      fref = c_loc(x)
+
+    end function fref
+
+    function iref(x)
+      integer(c_int), target :: x(*)
+      type(c_ptr) :: iref
+
+      iref = c_loc(x)
+
+    end function iref
 
 
 end module writer

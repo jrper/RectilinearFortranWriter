@@ -7,15 +7,19 @@
 #include "vtkPointData.h"
 #include "vtkCellData.h"
 #include "vtkSmartPointer.h"
+#include "vtkObjectFactory.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
 #include "vtkXMLWriter.h"
 #include "vtkXMLRectilinearGridWriter.h"
+#include "vtkXMLStructuredDataWriter.h"
 #include "vtkXMLPRectilinearGridWriter.h"
 #include "vtkRectilinearGridAlgorithm.h"
 #include "vtkTemplateAliasMacro.h"
 #include "vtkMultiProcessController.h"
 #include "vtkExtentTranslator.h"
+#include "vtkStreamingDemandDrivenPipeline.h"
+#include "vtkVersion.h"
 
 #include <stdio.h>
 
@@ -24,18 +28,30 @@ class vtkExtentModifier : public vtkRectilinearGridAlgorithm
 public:
   static vtkExtentModifier* New();
 #if VTK_MAJOR_VERSION < 6
-  vtkTypeRevisionMacro(vtExtentModifier,vtkRectilinearGridAlgorithm);
+  vtkTypeRevisionMacro(vtkExtentModifier,vtkRectilinearGridAlgorithm);
 #else
  vtkTypeMacro(vtkExtentModifier,vtkRectilinearGridAlgorithm);
 #endif
 
   int extent[6];
+  int count;
 
 protected:
   vtkExtentModifier();
   ~vtkExtentModifier();
 
   virtual int RequestData(
+			  vtkInformation* request,
+			  vtkInformationVector** InputVector,
+			  vtkInformationVector* outputVector);
+
+
+  virtual int RequestUpdateExtent(
+  			  vtkInformation* request,
+  			  vtkInformationVector** InputVector,
+  			  vtkInformationVector* outputVector);
+
+  virtual int RequestInformation(
 			  vtkInformation* request,
 			  vtkInformationVector** InputVector,
 			  vtkInformationVector* outputVector);
@@ -46,23 +62,101 @@ protected:
 #endif
   vtkStandardNewMacro(vtkExtentModifier);
 
-  vtkExtentModifier::vtkExtentModifier(){}
+vtkExtentModifier::vtkExtentModifier(){this->count = 0;}
   vtkExtentModifier::~vtkExtentModifier(){}
 
   int vtkExtentModifier::RequestData(
 		      vtkInformation* vtkNotUsed(request),
 		      vtkInformationVector **inputVector,
 		      vtkInformationVector* outputVector )
-{
-  vtkInformation* outInfo=outputVector->GetInformationObject(0);
-  vtkRectilinearGrid* output= vtkRectilinearGrid::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT() ) );
-  vtkRectilinearGrid* input= vtkRectilinearGrid::GetData(inputVector[0]);
+  {
+    vtkInformation* outInfo=outputVector->GetInformationObject(0);
+    vtkRectilinearGrid* output= vtkRectilinearGrid::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT() ) );
+    vtkRectilinearGrid* input= vtkRectilinearGrid::GetData(inputVector[0]);
+    
+    output->ShallowCopy(input);
+    output->SetExtent(input->GetExtent());
+    outInfo->Set(output->DATA_EXTENT(), input->GetExtent(), 6);
+    
+    return 1;
+  }
 
-  output->ShallowCopy(input);
-  output->SetExtent(this->extent);
+int vtkExtentModifier::RequestUpdateExtent(
+			vtkInformation* request,
+			vtkInformationVector** inputVector,
+			vtkInformationVector* outputVector) {
+
+  vtkInformation* outputInfo = outputVector->GetInformationObject(0);
+  vtkInformation* inputInfo = inputVector[0]->GetInformationObject(0);
+
+  int piece, npieces, ghostLevels, *extent;
+
+  piece = outputInfo->Get(vtkStreamingDemandDrivenPipeline::UPDATE_PIECE_NUMBER());
+  npieces = outputInfo->Get(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_PIECES());
+
+  extent = outputInfo->Get(vtkStreamingDemandDrivenPipeline::UPDATE_EXTENT());
+
+  std::cout << "Running Update Extent: "<<piece << " of " << npieces <<"\n";
+  std::cout << " Extent : [" << extent[0];
+  for (int i=1; i<6; ++i) {
+    std::cout<<","<<extent[i];
+  }
+  std::cout << "]\n";
+
+}
+
+int vtkExtentModifier::RequestInformation(
+			vtkInformation* request,
+			vtkInformationVector** inputVector,
+			vtkInformationVector* outputVector) {
+
+  vtkInformation* outputInfo = outputVector->GetInformationObject(0);
+  vtkInformation* inputInfo = inputVector[0]->GetInformationObject(0);
+
+  int extent[6] = {0,30,0,10,0,0};
+
+  outputInfo->Set(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT(), extent, 6);
+  outputInfo->Set(vtkDataObject::DATA_EXTENT(), vtkRectilinearGrid::SafeDownCast(this->GetInput())->GetExtent(), 6);
+
+  std::cout << ++this->count;
 
   return 1;
+
 }
+
+class myWriter : public vtkXMLPRectilinearGridWriter {
+public:
+  static myWriter* New();
+#if VTK_MAJOR_VERSION < 6
+  vtkTypeRevisionMacro(myWriter, vtkXMLPRectilinearGridWriter);
+#else
+ vtkTypeMacro(myWriter, vtkXMLPRectilinearGridWriter);
+#endif
+
+  vtkXMLStructuredDataWriter* CreateStructuredPieceWriter();
+  
+
+protected:
+  myWriter();
+  ~myWriter();
+};
+
+#if VTK_MAJOR_VERSION < 6
+vtkCxxRevisionMacro(myWriter, "$Revision: 0.5$");
+#endif
+vtkStandardNewMacro(myWriter);
+
+myWriter::myWriter(){}
+myWriter::~myWriter(){}
+vtkXMLStructuredDataWriter* myWriter::CreateStructuredPieceWriter(){
+
+  vtkXMLRectilinearGridWriter* pWriter=vtkXMLRectilinearGridWriter::New();
+  std::cout << "testing!";
+  pWriter->SetInputConnection(this->GetInputConnection(0,0));
+  std::cout << "hello boys!";
+  return pWriter;
+
+};
 
 extern "C" {
 
@@ -70,21 +164,33 @@ extern "C" {
 		       void* x, void* y, void* z, int datatype) {
 
     grid = vtkRectilinearGrid::New();
-    int gdims[3] ={20,20,20};
-    int gextent[6] ={0,20,0,20,0,20};
-    grid->SetExtent(gextent);
     grid->SetDimensions(dims);
     grid->SetExtent(extent);
 
     vtkSmartPointer<vtkDataArray> coords[3];
+
+    switch(datatype) {
+    case(VTK_DOUBLE):
+      for (int k=0; k<3; ++k) {
+	coords[k] = static_cast<vtkDataArray*>(vtkDoubleArray::New());
+	coords[k]->SetNumberOfComponents(1);
+	coords[k]->SetNumberOfTuples(dims[k]);
+      }
+      break;
+    case(VTK_FLOAT):
+      for (int k=0; k<3; ++k) {
+	coords[k] = static_cast<vtkDataArray*>(vtkFloatArray::New());
+	coords[k]->SetNumberOfComponents(1);
+	coords[k]->SetNumberOfTuples(dims[k]);
+      }
+      break;
+    }
+      
     void* data[3] = {x, y, z};
 
     switch(datatype) {
       vtkTemplateAliasMacro(
 	for (int k=0; k<3; ++k) {
-	  coords[k] = vtkDataArray::CreateDataArray(datatype);
-	  coords[k]->SetNumberOfComponents(1);
-	  coords[k]->SetNumberOfTuples(dims[k]);
 	  for (int i=0; i<dims[k]; ++i) {
 	    coords[k]->SetComponent(i, 1, static_cast<VTK_TT*>(data[k])[i]);
 	  }
@@ -150,33 +256,35 @@ extern "C" {
     grid->GetCellData()->AddArray(vtk_data);
   }
 
-  
+  void write_vtk_grid(vtkRectilinearGrid *&grid, char* name, int npieces, int piece, int* global_extent) {
 
-  void write_vtk_grid(vtkRectilinearGrid *&grid, char* name, int npieces, int piece) {
-    vtkMultiProcessController* contr=vtkMultiProcessController::GetGlobalController();
-    vtkXMLWriter* writer;
+    vtkExtentModifier *em;
     if (npieces > 1) {
-      int extent[6]={0,20,0,10,0,0};
-      writer = (vtkXMLWriter*) vtkXMLPRectilinearGridWriter::New();
-      vtkExtentModifier* em = vtkExtentModifier::New();
-  em->SetInputData(grid);
-      grid->GetExtent(em->extent);
-  grid->SetExtent(extent);
-  std::cout << contr->GetNumberOfProcesses() << " " << contr->GetLocalProcessId()<<std::endl;
-      writer->SetInputConnection(em->GetOutputPort());
-      ((vtkXMLPRectilinearGridWriter*) writer)->SetController(contr);
-      ((vtkXMLPRectilinearGridWriter*) writer)->SetNumberOfPieces(npieces);
-      ((vtkXMLPRectilinearGridWriter*) writer)->SetStartPiece(piece);
-      ((vtkXMLPRectilinearGridWriter*) writer)->SetEndPiece(piece);
-      ((vtkXMLPRectilinearGridWriter*) writer)->SetWriteSummaryFile(piece == 0);
+      em = vtkExtentModifier::New();
+      em->SetInput(grid);
+      myWriter* writer = myWriter::New();
+      writer->SetInput(em->GetOutput());
+      writer->SetNumberOfPieces(npieces);
+      writer->SetStartPiece(piece);
+      writer->SetEndPiece(piece);
+      writer->SetWriteSummaryFile(piece == 0);
+      writer->SetFileName(name);
+      writer->Write();
+      writer->Delete();
+      em->Delete();
     } else {
-      writer = (vtkXMLWriter*) vtkXMLRectilinearGridWriter::New();
+      vtkXMLRectilinearGridWriter* writer = vtkXMLRectilinearGridWriter::New();
+#if VTK_MAJOR_VERSION < 6
+      writer->SetInput(grid);
+#else
       writer->SetInputData(grid);
+#endif
+      writer->SetFileName(name);
+      writer->Write();
+      writer->Delete();
     }
-    writer->SetFileName(name);
-    writer->Write();
 
-    if (contr) contr->Barrier();
+      
   }
 
   void destroy_vtk_grid(vtkRectilinearGrid *&grid) {
