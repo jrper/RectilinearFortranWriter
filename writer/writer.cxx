@@ -23,7 +23,9 @@
 #include <mpi.h>
 #include <stdio.h>
 
-#if VTK_MAJOR_VERSION >5
+#if (VTK_MAJOR_VERSION > 6) || (VTK_MAJOR_VERSION == 6 && VTK_MINOR_VERSION > 1)
+#define HAVE_VTK_WITH_MPI 1
+#include "vtkMPIController.h"
 vtkMPIController* generic;
 #endif
 
@@ -58,9 +60,11 @@ protected:
   myWriter();
   ~myWriter();
   void WritePrimaryElementAttributes(ostream &, vtkIndent);
+#ifndef HAVE_VTK_WITH_MPI
   myPieceWriter* CreateStructuredPieceWriter();
   vtkXMLWriter* CreatePieceWriter(int);
   void WritePPieceAttributes(int);
+#endif
   int GlobalExtent[6];
   int* Extent;
 };
@@ -76,7 +80,7 @@ myWriter::~myWriter(){ if (Extent) delete[] Extent;}
 
 void myWriter::UpdateGlobalExtent(int local_extent[6]) {
 
-#ifndef __vtkMPIController_h
+#ifndef HAVE_VTK_WITH_MPI
 
   this->Extent = new int[6*this->GetNumberOfPieces()];
   MPI_Gather( local_extent, 6, MPI_INT, 
@@ -109,6 +113,8 @@ void myWriter::UpdateGlobalExtent(int local_extent[6]) {
 #endif
 }
 
+#ifndef HAVE_VTK_WITH_MPI
+
 vtkXMLWriter* myWriter::CreatePieceWriter(int vtkNotUsed(index)){
 
   myPieceWriter* pWriter = this->CreateStructuredPieceWriter();
@@ -124,14 +130,6 @@ myPieceWriter* myWriter::CreateStructuredPieceWriter()
   return pWriter;
 }
 
-void myWriter::WritePrimaryElementAttributes(ostream &os, vtkIndent indent)
-{
-  this->GetExecutive()->GetInputInformation(0, 0)->Set(
-				     vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT(),
-				       this->GlobalExtent, 6);
-  this->Superclass::WritePrimaryElementAttributes(os, indent);
-}
-
 void myWriter::WritePPieceAttributes(int index)
 {
   this->WriteVectorAttribute("Extent", 6, &(this->Extent[6*index]));
@@ -140,6 +138,16 @@ void myWriter::WritePPieceAttributes(int index)
     return;
     }
   this->Superclass::Superclass::Superclass::WritePPieceAttributes(index);
+}
+
+#endif
+
+void myWriter::WritePrimaryElementAttributes(ostream &os, vtkIndent indent)
+{
+  this->GetExecutive()->GetInputInformation(0, 0)->Set(
+				     vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT(),
+				       this->GlobalExtent, 6);
+  this->Superclass::WritePrimaryElementAttributes(os, indent);
 }
 
 #if VTK_MAJOR_VERSION < 6
@@ -203,7 +211,7 @@ void myPieceWriter::SetInputUpdateExtent(int piece)
 extern "C" {
 
   void initialize_vtk(){
-#ifdef __vtkMPIController_h
+#ifdef HAVE_VTK_WITH_MPI
     vtkMPICommunicator* comm=vtkMPICommunicator::New();
     generic=vtkMPIController::New() ;
     generic->SetCommunicator(comm->GetWorldCommunicator());
@@ -318,13 +326,18 @@ extern "C" {
 #else
       writer->SetInputData(grid);
 #endif
-#ifdef __vtkMPIController_h
+#ifdef HAVE_VTK_WITH_MPI
+      std::cout << "bobbins!";
       writer->SetController(generic);
+      writer->WriteSummaryFileOn();
+#else
+      writer->SetWriteSummaryFile(piece = 0 );
 #endif
       writer->SetNumberOfPieces(npieces);
       writer->SetStartPiece(piece);
       writer->SetEndPiece(piece);
-      writer->SetWriteSummaryFile(piece == 0);
+      
+
       writer->SetFileName(name);
       if (global_extent) {
 	writer->SetGlobalExtent(global_extent);
