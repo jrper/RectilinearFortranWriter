@@ -7,6 +7,9 @@ module writer
   integer, parameter :: VTK_DOUBLE=11, VTK_FLOAT=10, VTK_INT=6, VTK_LONG=8
 
   interface
+     
+     subroutine initialize_vtk() bind(c)
+     end subroutine initialize_vtk
 
      subroutine create_vtk_grid(grid, dims, extent, x, y, z, datatype) bind(c)
        use iso_c_binding

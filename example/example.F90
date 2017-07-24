@@ -14,6 +14,7 @@ program example1
   integer :: ierr, rank, nprocs, offset(3), global_extent(6)
 
   call MPI_Init(ierr)
+  call initialize_vtk()
   call MPI_Comm_size(MPI_COMM_WORLD, nprocs, ierr)
   call MPI_Comm_rank(MPI_COMM_WORLD, rank, ierr)
   
@@ -23,7 +24,7 @@ program example1
   z = [(i*DZ, i=0, NZ-1)]
   
   offset = [(NX-1)*rank,0,0]
-  global_extent=[0,30,0,10,0,0]
+  global_extent=[0,nprocs*(NX-1),0,10,0,0]
   
   do k=1, NZ
      do j=1, NY
