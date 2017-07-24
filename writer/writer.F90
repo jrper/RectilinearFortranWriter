@@ -36,12 +36,11 @@ module writer
        type(c_ptr), intent(in), value :: data
      end subroutine add_cell_data
 
-     subroutine write_vtk_grid(grid, name, npieces, piece, global_extent) bind(c)
+     subroutine write_vtk_grid(grid, name, npieces, piece) bind(c)
        use iso_c_binding
        type(c_ptr), intent(in) :: grid
        character(c_char), intent(in) :: name(*)
        integer(c_int), intent(in), value :: npieces, piece
-       integer(c_int), intent(in) :: global_extent(6)
      end subroutine write_vtk_grid
 
      subroutine destroy_vtk_grid(grid) bind(c)
